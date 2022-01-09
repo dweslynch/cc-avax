@@ -89,6 +89,7 @@ contract CoveredCall
   }
 
   // Not sure how a short transfer could be implemented but will look into it
+  // Also not sure why this function would be necessary but it was trivial to implement
   function transfer(address to, uint amount) external
   {
     require(amount <= _balances[msg.sender]);
@@ -106,10 +107,12 @@ contract CoveredCall
 
     interest -= amount;
 
+    // Continue exercising short calls until entire exercise is filled
+    // May modify behavior to require multiple calls instead of a loop for gas transparency reasons
     while (amount > 0)
     {
       address short = _shorts[_shorts.length - 1];
-      if (amount < -_balances[short])
+      if (amount < -_balances[short])                                           // Does short have a large enough position to fill the exercise order?
       {
           _balances[msg.sender] -= amount;
           _coverage[short] -= amount;
@@ -122,12 +125,12 @@ contract CoveredCall
       }
       else
       {
-        uint filled = -_balances[short];
+        uint filled = -_balances[short];                                        // The portion of the exercise order that will be filled
         _balances[msg.sender] -= filled;
         _balances[short] = 0;
         _coverage[short] = 0;
 
-        _shorts_index[short] = 0;
+        _shorts_index[short] = 0;                                               // Remove the short from the registry because they're closed out
         _shorts.pop();
 
         amount -= filled;
@@ -144,23 +147,23 @@ contract CoveredCall
   function claim() external
   {
     uint coverage = _coverage[msg.sender];
-    if (block.timestamp > expiration)
+    if (block.timestamp > expiration)                                           // All coverage can be reclaimed after expiration
     {
       _coverage[msg.sender] = 0;
       underlying.transfer(msg.sender, coverage * 10 ** underlying_decimals);
     }
     else
     {
-      require(coverage >= -_balances[msg.sender]);                              // Coverage must exceed short balance
+      require(coverage >= -_balances[msg.sender]);                              // Coverage must exceed short balance if before expiration
       if (_balances[msg.sender] < 0)
       {
-        uint net = coverage + _balances[msg.sender];
+        uint net = coverage + _balances[msg.sender];                            // Still in a short position - some coverage is required
         _coverage[msg.sender] -= net;
         underlying.transfer(msg.sender, net * 10 ** underlying_decimals);
       }
       else
       {
-        _coverage[msg.sender] = 0;
+        _coverage[msg.sender] = 0;                                              // Position closed or long - all coverage can be removed
         underlying.transfer(msg.sender, coverage);
       }
     }
